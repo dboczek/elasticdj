@@ -1,6 +1,4 @@
 from setuptools import setup, find_packages
-# import os
-import elasticdj
 
 
 CLASSIFIERS = [
@@ -20,7 +18,7 @@ setup(
     author="Daniel Boczek",
     author_email="daniel.boczek@gmail.com",
     name='elasticdj',
-    version=elasticdj.__version__,
+    version='1.0rc1',
     description='Reusable app for Django to help create and manage elasticsearch Doctypes from Models',
     # long_description=open(os.path.join(os.path.dirname(__file__), 'README.md')).read(),
     url='https://github.com/dboczek/elasticdj',

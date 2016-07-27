@@ -8,13 +8,16 @@ from elasticsearch.helpers import bulk
 import time
 from datetime import timedelta
 import elasticdj
+import certifi
+
 
 elasticdj.autodiscover()
 
 
 class scroll_hits_iterator:
     def __init__(self, elasticsearch=None, scroll='10m', **kwargs):
-        self.es = elasticsearch or Elasticsearch(settings.ELASTICSEARCH_HOSTS)
+        self.es = elasticsearch or Elasticsearch(
+            settings.ELASTICSEARCH_HOSTS, verify_certs=True, ca_certs=certifi.where())
         self.scroll = scroll
         self.kwargs = kwargs
         self.i = 0
@@ -109,7 +112,6 @@ class Command(BaseCommand):
             timer = Timer('%s indexing time' % doctype.__name__).start()
             if verbosity:
                 print "Indexing: %s" % doctype.__name__
-
             for obj in doctype.index_queryset():
                 d = doctype(obj)
                 if verbosity > 1:
@@ -125,8 +127,7 @@ class Command(BaseCommand):
         time.sleep(2)  # wait for Elastic Search to reindex documents.
 
         timer = Timer('Removing outdated document time').start()
-        from elasticsearch import Elasticsearch
-        es = Elasticsearch(settings.ELASTICSEARCH_HOSTS)
+        es = Elasticsearch(settings.ELASTICSEARCH_HOSTS, verify_certs=True, ca_certs=certifi.where())
 
         body = {
             "query": {

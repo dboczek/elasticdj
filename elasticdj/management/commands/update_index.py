@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from elasticsearch_dsl import Index
+from elasticsearch_dsl import exceptions
 from django.utils import translation
 from django.utils import timezone
 from elasticsearch import Elasticsearch
@@ -97,10 +98,13 @@ class Command(BaseCommand):
         if verbosity:
             print "Preparing to index: %s" % ', '.join([cls.__name__ for cls in doctypes])
 
-        for doctype in doctypes:
-            main.doc_type(doctype)
         if not main.exists():
             main.create()
+        for doctype in doctypes:
+            try:
+                doctype.init()
+            except exceptions.IllegalOperation:
+                pass
         index_start_at = timezone.now()
         if verbosity:
             print 'Start index at', index_start_at

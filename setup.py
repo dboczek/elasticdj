@@ -18,7 +18,7 @@ setup(
     author="Daniel Boczek",
     author_email="daniel.boczek@gmail.com",
     name='elasticdj',
-    version='1.0rc1',
+    version='1.0rc2',
     description='Reusable app for Django to help create and manage elasticsearch Doctypes from Models',
     # long_description=open(os.path.join(os.path.dirname(__file__), 'README.md')).read(),
     url='https://github.com/dboczek/elasticdj',
@@ -29,6 +29,7 @@ setup(
         'django>=1.7',
         'elasticsearch>=1.9.0',
         'elasticsearch-dsl>=0.0.10',
+        'certifi',
     ],
     # tests_require=[
     # ],

@@ -88,22 +88,31 @@ class Timer:
 class Command(BaseCommand):
     help = 'Updates Elasticsearch index'
 
+    def add_arguments(self, parser):
+        parser.add_argument('doctype', nargs='*', type=str)
+
     def handle(self, **options):
         total_timer = Timer('Total time').start()
         verbosity = int(options['verbosity'])
         translation.activate(settings.LANGUAGE_CODE)
 
-        main = Index(settings.ELASTICSEARCH_INDEX_NAME)
+        indexes = {}
 
         doctypes = elasticdj.doctype_registry.doctypes
+
+        if options["doctype"]:
+            mapping = dict((d.__name__, d) for d in doctypes)
+            doctypes = [mapping[doctype] for doctype in options['doctype']]
 
         if verbosity:
             print "Preparing to index: %s" % ', '.join([cls.__name__ for cls in doctypes])
 
         for doctype in doctypes:
-            main.doc_type(doctype)
-        if not main.exists():
-            main.create()
+            indexes[doctype._doc_type.index] = indexes.get(doctype._doc_type.index, Index(doctype._doc_type.index))
+            indexes[doctype._doc_type.index].doc_type(doctype)
+        for index in indexes.values():
+            if not index.exists():
+                index.create()
         index_start_at = timezone.now()
         if verbosity:
             print 'Start index at', index_start_at
@@ -120,34 +129,32 @@ class Command(BaseCommand):
             if verbosity:
                 print timer.name, timer.stop().time()
             timers.append(timer)
+        if not options["doctype"]:
+            if verbosity:
+                print "Removing outdated documents."
 
-        if verbosity:
-            print "Removing outdated documents."
+            time.sleep(2)  # wait for Elastic Search to reindex documents.
 
-        time.sleep(2)  # wait for Elastic Search to reindex documents.
+            timer = Timer('Removing outdated document time').start()
+            es = Elasticsearch(settings.ELASTICSEARCH_HOSTS, verify_certs=True, ca_certs=certifi.where())
 
-        timer = Timer('Removing outdated document time').start()
-        es = Elasticsearch(settings.ELASTICSEARCH_HOSTS, verify_certs=True, ca_certs=certifi.where())
-
-        body = {
-            "query": {
-                "bool": {
-                    "filter": {"range": {"indexed_at": {"lt": index_start_at}}}
+            body = {
+                "query": {
+                    "bool": {
+                        "filter": {"range": {"indexed_at": {"lt": index_start_at}}}
+                    }
                 }
             }
-        }
-        docs = scroll_hits_iterator(es, index=settings.ELASTICSEARCH_INDEX_NAME, body=body,
-                                    fields=['indexed_at'], sort="_doc")
-        # for doc in delete_actions(docs, verbosity):
-        #    pass
-        result = bulk(es, delete_actions(docs, verbosity))
-        if verbosity:
-            print 'Removed %d documents.' % result[0]
-            if result[1]:
-                # TODO log error when logger will be configured.
-                print "Errors:"
-                for error in result[1]:
-                    print error
+            docs = scroll_hits_iterator(es, index=settings.ELASTICSEARCH_INDEX_NAME, body=body,
+                                        fields=['indexed_at'], sort="_doc")
+            result = bulk(es, delete_actions(docs, verbosity))
+            if verbosity:
+                print 'Removed %d documents.' % result[0]
+                if result[1]:
+                    # TODO log error when logger will be configured.
+                    print "Errors:"
+                    for error in result[1]:
+                        print error
 
         if verbosity:
             print timer.name, timer.stop().time()

@@ -9,6 +9,7 @@ import time
 from datetime import timedelta
 import elasticdj
 import certifi
+from elasticdj.models import Log
 
 
 elasticdj.autodiscover()
@@ -91,7 +92,9 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('doctype', nargs='*', type=str)
 
-    def handle(self, **options):
+    def handle(self, db_log=True, **options):
+        if db_log:
+            log = Log.objects.create(command="update")
         total_timer = Timer('Total time').start()
         verbosity = int(options['verbosity'])
         translation.activate(settings.LANGUAGE_CODE)
@@ -166,3 +169,7 @@ class Command(BaseCommand):
         if verbosity > 1:
             for timer in timers:
                 print timer.name, timer.time()
+
+        if db_log:
+            log.finished_at = timezone.now()
+            log.save()

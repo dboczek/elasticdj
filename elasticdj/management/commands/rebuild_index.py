@@ -32,7 +32,7 @@ class Command(BaseCommand):
                 if verbosity > 1:
                     print 'IndexNotFound'
                 pass
-        options['db_log'] = False
+        options['is_update'] = False
         call_command('update_index', **options)
         log.finished_at = timezone.now()
         log.save()

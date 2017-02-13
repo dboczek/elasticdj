@@ -92,8 +92,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('doctype', nargs='*', type=str)
 
-    def handle(self, db_log=True, **options):
-        if db_log:
+    def handle(self, is_update=True, **options):
+        if is_update:
             log = Log.objects.create(command="update")
         total_timer = Timer('Total time').start()
         verbosity = int(options['verbosity'])
@@ -124,11 +124,11 @@ class Command(BaseCommand):
             timer = Timer('%s indexing time' % doctype.__name__).start()
             if verbosity:
                 print "Indexing: %s" % doctype.__name__
-            for obj in doctype.index_queryset():
+            for obj in doctype.get_queryset(for_update=is_update):
                 d = doctype(obj)
                 if verbosity > 1:
                     print d.indexed_at, doctype.__name__, "[%s]" % obj.pk, obj
-                d.save()
+                d.upsert()
             if verbosity:
                 print timer.name, timer.stop().time()
             timers.append(timer)
@@ -170,6 +170,6 @@ class Command(BaseCommand):
             for timer in timers:
                 print timer.name, timer.time()
 
-        if db_log:
+        if is_update:
             log.finished_at = timezone.now()
             log.save()

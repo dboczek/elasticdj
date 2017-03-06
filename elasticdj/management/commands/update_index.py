@@ -148,16 +148,17 @@ class Command(BaseCommand):
                     }
                 }
             }
-            docs = scroll_hits_iterator(es, index=settings.ELASTICSEARCH_INDEX_NAME, body=body,
-                                        fields=['indexed_at'], sort="_doc")
-            result = bulk(es, delete_actions(docs, verbosity))
-            if verbosity:
-                print 'Removed %d documents.' % result[0]
-                if result[1]:
-                    # TODO log error when logger will be configured.
-                    print "Errors:"
-                    for error in result[1]:
-                        print error
+            for index in indexes.keys():
+                docs = scroll_hits_iterator(es, index=index, body=body,
+                                            fields=['indexed_at'], sort="_doc")
+                result = bulk(es, delete_actions(docs, verbosity))
+                if verbosity:
+                    print 'Removed %d documents.' % result[0]
+                    if result[1]:
+                        # TODO log error when logger will be configured.
+                        print "Errors:"
+                        for error in result[1]:
+                            print error
 
         if verbosity:
             print timer.name, timer.stop().time()

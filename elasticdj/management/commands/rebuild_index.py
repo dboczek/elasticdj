@@ -21,8 +21,9 @@ class Command(BaseCommand):
         verbosity = int(options['verbosity'])
         doctypes = elasticdj.doctype_registry.doctypes
         indexes = {}
-        for doctype in doctypes:
-            indexes[doctype._doc_type.index] = indexes.get(doctype._doc_type.index, Index(doctype._doc_type.index))
+        for doctype, t in doctypes:
+            if t == 'DocType':
+                indexes[doctype._doc_type.index] = indexes.get(doctype._doc_type.index, Index(doctype._doc_type.index))
         for index_name, index in indexes.items():
             try:
                 if verbosity > 1:

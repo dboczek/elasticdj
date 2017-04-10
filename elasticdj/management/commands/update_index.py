@@ -86,6 +86,109 @@ class Timer:
         return timedelta(seconds=elapsed_seconds)
 
 
+def update(is_update=True, is_run_from_commandline=False, **options):
+    output = []
+
+    def summary(message):
+        if is_run_from_commandline:
+            print message
+        else:
+            output.append(message)
+
+    if is_update:
+        log = Log.objects.create(command="update")
+    total_timer = Timer('Total time').start()
+    verbosity = int(options['verbosity'])
+    translation.activate(settings.LANGUAGE_CODE)
+
+    indexes = {}
+
+    doctypes = elasticdj.doctype_registry.doctypes
+
+    if options["doctype"]:
+        mapping = dict((d.__name__, d) for d, t in doctypes)
+        doctypes = [(mapping[doctype], 'DocType') for doctype in options['doctype']]
+
+    if verbosity:
+        # import ipdb;ipdb.set_trace()
+        summary("Preparing to index: %s" % ', '.join([cls.__name__ for cls, t in doctypes if t == 'DocType']))
+
+    for doctype, t in doctypes:
+        if t == 'DocType':
+            indexes[doctype._doc_type.index] = indexes.get(doctype._doc_type.index, Index(doctype._doc_type.index))
+            indexes[doctype._doc_type.index].doc_type(doctype)
+    for index in indexes.values():
+        if not index.exists():
+            index.create()
+    index_start_at = timezone.now()
+    if verbosity:
+        summary('Start index at %s' % index_start_at)
+    timers = []
+    for doctype, t in doctypes:
+        if t == 'DocType':
+            timer = Timer('%s indexing time' % doctype.__name__).start()
+            if verbosity:
+                summary("Indexing: %s" % doctype.__name__)
+            for obj in doctype.get_queryset(for_update=is_update):
+                d = doctype(obj)
+                if verbosity > 1:
+                    summary("%s %s [%s] %s" % (d.indexed_at, doctype.__name__, obj.pk, obj))
+                d.upsert()
+            if verbosity:
+                summary("%s %s" % (timer.name, timer.stop().time()))
+            timers.append(timer)
+        else:  # callable
+            messages = doctype()
+            if is_run_from_commandline:
+                for m in messages:
+                    print "\t", m
+            else:
+                output += messages
+    if not options["doctype"]:
+        if verbosity:
+            summary("Removing outdated documents.")
+
+        time.sleep(2)  # wait for Elastic Search to reindex documents.
+
+        timer = Timer('Removing outdated document time').start()
+        es = Elasticsearch(settings.ELASTICSEARCH_HOSTS, verify_certs=True, ca_certs=certifi.where())
+
+        body = {
+            "query": {
+                "bool": {
+                    "filter": {"range": {"indexed_at": {"lt": index_start_at}}}
+                }
+            }
+        }
+        for index in indexes.keys():
+            docs = scroll_hits_iterator(es, index=index, body=body,
+                                        fields=['indexed_at'], sort="_doc")
+            result = bulk(es, delete_actions(docs, verbosity))
+            if verbosity:
+                summary('Removed %d documents.' % result[0])
+                if result[1]:
+                    # TODO log error when logger will be configured.
+                    summary("Errors:")
+                    for error in result[1]:
+                        summary(error)
+
+    if verbosity:
+        summary("%s %s" % (timer.name, timer.stop().time()))
+
+    timers.append(timer)
+
+    if verbosity:
+        summary('Indexing total time: %s' % total_timer.stop().time())
+    if verbosity > 1:
+        for timer in timers:
+            summary("%s %s" % (timer.name, timer.time()))
+
+    if is_update:
+        log.finished_at = timezone.now()
+        log.save()
+    return output
+
+
 class Command(BaseCommand):
     help = 'Updates Elasticsearch index'
 
@@ -93,84 +196,4 @@ class Command(BaseCommand):
         parser.add_argument('doctype', nargs='*', type=str)
 
     def handle(self, is_update=True, **options):
-        if is_update:
-            log = Log.objects.create(command="update")
-        total_timer = Timer('Total time').start()
-        verbosity = int(options['verbosity'])
-        translation.activate(settings.LANGUAGE_CODE)
-
-        indexes = {}
-
-        doctypes = elasticdj.doctype_registry.doctypes
-
-        if options["doctype"]:
-            mapping = dict((d.__name__, d) for d in doctypes)
-            doctypes = [mapping[doctype] for doctype in options['doctype']]
-
-        if verbosity:
-            print "Preparing to index: %s" % ', '.join([cls.__name__ for cls in doctypes])
-
-        for doctype in doctypes:
-            indexes[doctype._doc_type.index] = indexes.get(doctype._doc_type.index, Index(doctype._doc_type.index))
-            indexes[doctype._doc_type.index].doc_type(doctype)
-        for index in indexes.values():
-            if not index.exists():
-                index.create()
-        index_start_at = timezone.now()
-        if verbosity:
-            print 'Start index at', index_start_at
-        timers = []
-        for doctype in doctypes:
-            timer = Timer('%s indexing time' % doctype.__name__).start()
-            if verbosity:
-                print "Indexing: %s" % doctype.__name__
-            for obj in doctype.get_queryset(for_update=is_update):
-                d = doctype(obj)
-                if verbosity > 1:
-                    print d.indexed_at, doctype.__name__, "[%s]" % obj.pk, obj
-                d.upsert()
-            if verbosity:
-                print timer.name, timer.stop().time()
-            timers.append(timer)
-        if not options["doctype"]:
-            if verbosity:
-                print "Removing outdated documents."
-
-            time.sleep(2)  # wait for Elastic Search to reindex documents.
-
-            timer = Timer('Removing outdated document time').start()
-            es = Elasticsearch(settings.ELASTICSEARCH_HOSTS, verify_certs=True, ca_certs=certifi.where())
-
-            body = {
-                "query": {
-                    "bool": {
-                        "filter": {"range": {"indexed_at": {"lt": index_start_at}}}
-                    }
-                }
-            }
-            for index in indexes.keys():
-                docs = scroll_hits_iterator(es, index=index, body=body,
-                                            fields=['indexed_at'], sort="_doc")
-                result = bulk(es, delete_actions(docs, verbosity))
-                if verbosity:
-                    print 'Removed %d documents.' % result[0]
-                    if result[1]:
-                        # TODO log error when logger will be configured.
-                        print "Errors:"
-                        for error in result[1]:
-                            print error
-
-        if verbosity:
-            print timer.name, timer.stop().time()
-
-        timers.append(timer)
-
-        if verbosity:
-            print 'Indexing total time: %s' % total_timer.stop().time()
-        if verbosity > 1:
-            for timer in timers:
-                print timer.name, timer.time()
-
-        if is_update:
-            log.finished_at = timezone.now()
-            log.save()
+        return update(is_update, is_run_from_commandline=True, **options)

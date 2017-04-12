@@ -140,8 +140,9 @@ def update(is_update=True, is_run_from_commandline=False, **options):
         else:  # callable
             messages = doctype()
             if is_run_from_commandline:
-                for m in messages:
-                    print "\t", m
+                if verbosity:
+                    for m in messages:
+                        print "\t", m
             else:
                 output += messages
     if not options["doctype"]:
